@@ -1,0 +1,790 @@
+<script src="./d3js/d3.min.js"></script>
+<script src="./Developers.js"></script>
+
+<script>
+
+    data = JSON.parse(decodeURIComponent(escape(JSON.stringify(data))));
+    console.log(data);
+
+    window.onload = function(){
+        var colors = ["#0da120", "#005bff", "#ff4b4b", "#777777", "#3686ff"];
+        var center_colors = ["red", "blue", "green", "purple", "orange", "violet"];
+        var anim = d3.easeElastic.amplitude(1).period(0.8);
+        var keys = ['Hewlett_Packard_Enterprise', 'IBM', 'Прочие', 'Т‑Платформы', 'РСК'];
+
+        var left_pad = 80, right_pad = 200, pad = 80;
+        var xScale = d3.scaleLinear()
+            .range([left_pad, left_pad + Math.min(document.body.clientWidth / 10, 100)]);
+
+        var xScale1 = d3.scaleBand()
+            .domain(data.map(function(d) { return d.Редакция; }))
+            .range([document.body.clientWidth - right_pad, left_pad]);
+         
+        var yScale = d3.scaleBand()
+            .domain(data.map(function(d) { return d.Редакция; }))
+            .range([pad, document.body.clientHeight - pad]);
+
+        var yScale1 = d3.scaleLinear()
+            .range([document.body.clientHeight - pad, pad]);
+
+        var svg = d3.select("body")
+                    .append("svg")
+                    .attr("style", "width:100%; height:100%");
+
+        //axis(text tips)
+        svg.append("g")
+            .attr("id", "axis")
+            .selectAll("text")
+            .data(data)
+            .enter()
+            .append("text")
+            .style("color", "#1a1a1a")
+            .style("font-family", "Arial")
+            .style("font-size", "24px")
+            .style("font-weight", "600")
+            .attr("transform", d => "rotate(0, 10, " + (+yScale(d.Редакция) + yScale.bandwidth(d) * 0.7) + ")")
+            .attr("y", d => yScale(d.Редакция) + yScale.bandwidth(d) * 0.7)
+            .attr("dy", 0)
+            .attr("dx", 0)
+            .style("opacity", "1")
+            .text(d => d.Редакция.substr(3, 3) + d.Редакция.substr(8, 2))
+            .attr("x", -90)
+            .transition()
+            .duration(2000)
+            .delay(function(d, i) {
+                return i * 5;
+            })
+            .ease(anim)
+            .attr("x", 10);
+
+        //center diagram
+        var center = svg.append("g")
+            .style("opacity", "0")
+            .attr("id", "center");
+
+        var centerXScale = d3.scaleBand()
+            .domain(keys)
+            .range([document.body.clientWidth - right_pad, left_pad + 150]);
+
+        var centerYScale = d3.scaleLinear()
+            .domain([0, 60])    
+            .range([document.body.clientHeight - pad, pad]);
+
+        var xAxis = center.append("g")
+            .attr("transform", "translate(" + 0  + "," + (document.body.clientHeight - pad) + ")")
+            .call(d3.axisBottom(centerXScale).tickFormat(d => d.replace(/_/g, " ")));
+
+        xAxis.selectAll("text")
+            .style("font-family", "Arial")
+            .style("font-size", "24px")
+            .style("font-weight", "600");
+
+        var yAxis = center.append("g")
+            .attr("transform", "translate(" + (left_pad + 150)  + "," + 0 + ")")
+            .call(d3.axisLeft(centerYScale).tickArguments([10, "s"]));
+
+        yAxis.selectAll("text")
+            .style("font-family", "Arial")
+            .style("font-size", "24px")
+            .style("font-weight", "600");
+
+        var center_data = [[], [], [], [], []];
+        var center_keys = [];
+        var center_dates = [];
+        for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 5; j++) {
+                center_data[j].push(data[i][keys[j]]);
+            }
+            center_dates.push(data[i].Редакция);
+            center_keys.push(i);
+        }
+
+        var center_stack = d3.stack()
+                            .keys(center_keys);
+        console.log(center_data);
+        console.log(center_dates);
+        draw_center();
+
+
+        //buttons
+        resize_button();
+        detailed_button();
+
+        //current data information
+        var now_look = d3.select("body").append("g").attr("id", "now_look").style("opacity", "0");
+        var h = now_look.append("div")
+                .style("font-family", "Arial")
+                .style("font-size", "24px")
+                .style("font-weight", "700")
+                .style("position", "fixed")
+                .style("background-color", "#ff6666")
+                .style("color", "#1a1a1a")
+                .style("padding", "5px 4px")
+                .style("text-align", "center")
+                .style("border-radius", "4px 4px 0px 0px")
+                .style("left", document.body.clientWidth - right_pad + 30)
+                .style("top", document.body.clientHeight / 2)
+                .style("width", right_pad - 39)
+                .text("Вы смотрите на")
+                .style("height");
+
+        now_look.append("div")
+                .attr("id", "variable")
+                .style("font-family", "Arial")
+                .style("font-size", "24px")
+                .style("font-weight", "700")
+                .style("position", "fixed")
+                .style("background-color", "#ff6666")
+                .style("color", "#1a1a1a")
+                .style("text-align", "center")
+                .style("padding", "5px 4px")
+                .style("border-radius", "0px 0px 4px 4px")
+                .style("left", document.body.clientWidth - right_pad + 30)
+                .style("top", document.body.clientHeight / 2 + (+h.split("px")[0]) + 5)
+                .style("width", right_pad - 39)
+                .text("что-то");
+
+        now_look.transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "1");
+
+        //datasets' tips
+        var tips = d3.select("body").append("g").attr("id", "tips").style("opacity", "0");
+        var tip_top = pad;
+        for (var i = 0; i < keys.length; i++) {
+            var tip = tips.append("div")
+                .style("font-family", "Arial")
+                .style("font-size", "24px")
+                .style("font-weight", "600")
+                .style("position", "fixed")
+                .style("background-color", colors[i])
+                .style("color", "#1a1a1a")
+                .style("padding", "1px 3px")
+                .style("border-radius", "4px")
+                .style("left", document.body.clientWidth - right_pad + 30)
+                .style("top", tip_top)
+                .text(keys[i].replace(/_/g, " "))
+
+            tip_top += +tip.style("height").split("px")[0] + 5;
+
+            tip.on("mouseover", function(d) {
+                            now_look.selectAll("div")
+                                    .filter(function(d) {
+                                        if (d3.select(this).attr("id") == "variable") return true;
+                                        return false;
+                                    })
+                                    .transition()
+                                    .text(d3.select(this).text());                        
+                        })
+                        .on("mouseout", function(d) {
+                            now_look.selectAll("div")
+                                    .filter(function(d) {
+                                        if (d3.select(this).attr("id") == "variable") return true;
+                                        return false;
+                                    })
+                                    .transition()
+                                    .ease(d3.easeCubicInOut)
+                                    .text("что-то")
+                        });
+        }
+        tips.transition()
+            .duration(850)
+            .ease(d3.easeCubicInOut)
+            .style("opacity", "1");
+
+        //data
+        var stack = d3.stack()
+                    .keys(keys)
+                    .offset(d3.stackOffsetExpand);
+
+        var rect = svg.append("g")
+            .attr("id", "bar")
+            .selectAll("g")
+            .data(stack(data))
+            .enter()
+            .append("g")
+            .attr("fill", function(d, i) {
+                return colors[i];
+            })
+            .attr("category", function(d, i) {
+                return keys[i];
+            })
+            .attr("number", function(d, i) {
+                return i;
+            })
+            .selectAll("rect")
+            .data(function(d) {
+                return d;
+            })
+            .enter()
+            .append("rect")
+            .style("stroke-width", "0.5px")
+            .style("stroke", "white");
+
+        rect.attr("y", function(d) {
+                return yScale(d.data.Редакция);
+            })
+            .attr("height", yScale.bandwidth)
+            .attr("date", function(d) {
+                return d.data.Редакция;
+            })
+            .attr("value", function(d) {
+                return d.data[d3.select(this.parentNode).attr("category")];
+            })
+            .attr("x", left_pad)
+            .transition()
+            .duration(2000)
+            .delay(function(d, i) {
+                return i * 5;
+            })
+            .ease(anim)
+            .attr("x", function(d) {
+                return xScale(d[0]);
+            })
+            .attr("width", function(d) {
+                return xScale(d[1]) - xScale(d[0]);
+            });
+        
+        rect.on("mouseover", function(d) {
+                var name = d3.select(this.parentNode).attr("category");
+                var value = d.data[name];
+                name = name.replace(/_/g, " ")
+                now_look.selectAll("div")
+                        .filter(function(d) {
+                            if (d3.select(this).attr("id") == "variable") return true;
+                            return false;
+                        })
+                        .transition()
+                        .text(name + "\n значение: " + value);                        
+            })
+            .on("mouseout", function(d) {
+                now_look.selectAll("div")
+                        .filter(function(d) {
+                            if (d3.select(this).attr("id") == "variable") return true;
+                            return false;
+                        })
+                        .transition()
+                        .ease(d3.easeCubicInOut)
+                        .text("что-то")
+            })
+            .on("click", function(d) {
+                var date = d3.select(this).attr("date");
+                for (var i = 0; i < data.length; i++) {
+                    if (data[i].Редакция == date) {
+                        for (var j = 0; j < 5; j++) {
+                            center_data[j].push(data[i][keys[j]]);
+                        }
+                        center_dates.push(date);
+                        center_keys.push(center_keys.length);
+                        center_stack = d3.stack()
+                                        .keys(center_keys);
+                        remove_center();
+                        draw_center();
+                    }
+                }
+            });
+
+        //addictive functions
+        function draw_center(anim_delay = 0) {
+            center.transition()
+                .duration(850)
+                .delay(anim_delay)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "1");
+
+            var center_rect = center.append("g")
+                .attr("id", "center_data")
+                .selectAll("g")
+                .data(center_stack(center_data))
+                .enter()
+                .append("g")
+                .attr("date", function(d, i) {
+                    return center_dates[i];
+                })
+                .attr("fill", function(d, i) {
+                    return center_colors[i];
+                })
+                .attr("number", function(d, i) {
+                    return i;
+                })
+                .selectAll("rect")
+                .data(function(d) {
+                    return d;
+                })
+                .enter()
+                .append("rect")
+                .attr("number", function(d, i) {
+                    return i;
+                })
+                .style("stroke-width", "0.5px")
+                .style("stroke", "white")
+                .attr("x", function(d, i) {
+                    return centerXScale(keys[i]) + 25;
+                })
+                .attr("y", document.body.clientHeight - pad)
+                .attr("height", 0)
+                .attr("width", d => centerXScale.bandwidth(d) - 50);
+
+            center_rect.transition()
+                .duration(2000)
+                .delay(anim_delay)
+                .ease(anim)
+                .attr("y", function(d) {
+                    return centerYScale(d[1]);
+                })
+                .attr("height", d => centerYScale(d[0]) - centerYScale(d[1]));
+
+            center_rect.on("mouseover", function(d) {
+                    var date = d3.select(this.parentNode).attr("date");
+                    var red = d3.select(this.parentNode).attr("number");
+                    var set = d3.select(this).attr("number");
+                    now_look.selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "variable") return true;
+                                return false;
+                            })
+                            .transition()
+                            .text(date.substr(3, 3) + date.substr(8, 2) + "\n значение: " + center_data[set][red]);
+                })
+                .on("mouseout", function(d) {
+                    now_look.selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "variable") return true;
+                                return false;
+                            })
+                            .transition()
+                            .ease(d3.easeCubicInOut)
+                            .text("что-то")
+                })
+                .on("click", function(d) {
+                    var red = +d3.select(this.parentNode).attr("number");
+                    d3.select(this.parentNode.parentNode)
+                        .selectAll("rect")
+                        .transition()
+                        .ease(d3.easeCubicInOut)
+                        .duration(1000)
+                        .attr("height", 0)
+                        .attr("y", document.body.clientHeight - pad);
+
+                    /*d3.select(this.parentNode.parentNode)
+                        .selectAll("g")
+                        .filter(function() {
+                            return d3.select(this).attr("number") > red;
+                        })
+                        .attr("number", function(d) {
+                            return +d3.select(this).attr("number") - 1;
+                        })*/
+
+                    d3.select(this.parentNode)
+                        .transition()
+                        .duration(1000)
+                        .remove();
+
+                    for (var i = 0; i < 5; i++) {
+                        center_data[i].splice(red, 1);
+                    }
+                    center_dates.splice(red, 1);
+                    center_keys.pop();
+                    center_stack = d3.stack()
+                                    .keys(center_keys);
+                    remove_center();
+                    draw_center();
+                });
+        }
+
+        function remove_center(anim_delay = 0) {
+            var center_group = center.selectAll("g")
+                .filter(function(d) {
+                    return d3.select(this).attr("id") == "center_data";
+                })
+
+            center.selectAll("rect")
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return (center_keys.length - i - 1) * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", document.body.clientWidth / 2)
+                .attr("y", document.body.clientHeight / 2)
+                .attr("width", 0)
+                .attr("height", 0);
+
+
+            center.transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "0")
+                .call(function() {
+                    center_group.transition()
+                        .duration(anim_delay)
+                        .remove();
+                });
+        }
+
+
+        function detailed_button() {
+            var detailed = d3.select("body")
+                .append("div")
+                .attr("id", "detailed")
+                .attr("state", 0)
+                .on("click", function(d) {
+                    var state = d3.select(this).attr("state");
+                    if (state == 0) {
+                    } else if (state == 1) {
+                        d3.select(this).attr("state", 2);
+                        d3.select("body")
+                            .selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "resize") return true;
+                                return false;
+                            })
+                            .attr("state", 2);
+                        third_size();
+                    } else {
+                        d3.select(this).attr("state", 1);
+                        d3.select("body")
+                            .selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "resize") return true;
+                                return false;
+                            })
+                            .attr("state", 1);
+                        remove_detailed();
+                        second_size1();
+                    }
+                });
+
+            detailed.style("left", document.body.clientWidth - right_pad * 0.6)
+                .style("top", document.body.clientHeight - 72)
+                .style("font-family", "Arial")
+                .style("font-size", "24px")
+                .style("font-weight", "600")
+                .style("text-align", "center")
+                .style("position", "fixed")
+                .style("background-color", "gray")
+                .style("color", "#1a1a1a")
+                .style("padding", "1px 3px")
+                .style("border-radius", "4px")
+                .text("detailed")
+                .style("opacity", "0");
+
+            detailed.transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "1");
+        }
+        
+        function resize_button() {
+            var resize = d3.select("body")
+                .append("div")
+                .attr("id", "resize")
+                .attr("state", 0)
+                .on("click", function(d) {
+                    var state = d3.select(this).attr("state");
+                    if (state == 0) {
+                        d3.select(this).attr("state", 1);
+                        d3.select("body")
+                            .selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "detailed") return true;
+                                return false;
+                            })
+                            .attr("state", 1)
+                            .transition()
+                            .ease(d3.easeCubicInOut)
+                            .style("background-color", "ff6666")
+                        remove_detailed();
+                        second_size();
+
+                        remove_center(1600);
+                    } else {
+                        d3.select(this).attr("state", 0);
+                        d3.select("body")
+                            .selectAll("div")
+                            .filter(function(d) {
+                                if (d3.select(this).attr("id") == "detailed") return true;
+                                return false;
+                            })
+                            .attr("state", 0)
+                            .transition()
+                            .ease(d3.easeCubicInOut)
+                            .style("background-color", "gray")
+                        remove_detailed();
+                        first_size();
+
+                        draw_center(1600);
+                    }
+                });
+
+            resize.style("left", document.body.clientWidth - right_pad * 0.54)
+                .style("top", document.body.clientHeight - 40)
+                .style("font-family", "Arial")
+                .style("font-size", "24px")
+                .style("font-weight", "600")
+                .style("text-align", "center")
+                .style("position", "fixed")
+                .style("background-color", "SkyBlue")
+                .style("color", "#1a1a1a")
+                .style("padding", "1px 3px")
+                .style("border-radius", "4px")
+                .text("resize")
+                .style("opacity", "0");
+
+            resize.transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "1");
+        }
+
+        function first_size() {
+            svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "axis") return true;
+                    return false;
+                })
+                .selectAll("text")
+                .data(data)
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", document.body.clientWidth / 2)
+                .attr("y", document.body.clientHeight / 2)
+                .style("opacity", "0")
+                .attr("transform", d => "rotate(0, 10, " + (+yScale(d.Редакция) + yScale.bandwidth(d) * 0.7) + ")")
+                .attr("dy", 0)
+                .attr("dx", 0)
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", 10)
+                .attr("y", d => yScale(d.Редакция) + yScale.bandwidth(d) * 0.7)
+                .style("opacity", "1");
+
+            svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "bar") return true;
+                    return false;
+                })
+                .data(stack(data))
+                .selectAll("g")
+                .selectAll("rect")
+                .data(function(d) {
+                    return d;
+                })
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", document.body.clientWidth / 2)
+                .attr("y", document.body.clientHeight / 2)
+                .attr("width", 0)
+                .attr("height", 0)
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", function(d) {
+                    return xScale(d[0]);
+                })
+                .attr("y", function(d) {
+                    return yScale(d.data.Редакция);
+                })
+                .attr("width", function(d) {
+                    return xScale(d[1]) - xScale(d[0]);
+                })
+                .attr("height", yScale.bandwidth);
+        }
+
+        function second_size() {
+            svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "axis") return true;
+                    return false;
+                })
+                .selectAll("text")
+                .data(data)
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", document.body.clientWidth / 2)
+                .attr("y", document.body.clientHeight / 2)
+                .style("opacity", "0")
+                .attr("transform", d => "rotate(-90, "
+                                        + document.body.clientWidth / 2 + ", "
+                                        + document.body.clientHeight / 2 + ")")
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", d => xScale1(d.Редакция))
+                .attr("y", document.body.clientHeight - pad + 30)
+                .attr("transform", d => "rotate(-90, "
+                                        + xScale1(d.Редакция) + ", "
+                                        + (+document.body.clientHeight - pad + 30) + ")")
+                .attr("dy", d => +xScale1.bandwidth(d) * 0.7)
+                .attr("dx", -40)
+                .style("opacity", "1");
+
+            svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "bar") return true;
+                    return false;
+                })
+                .data(stack(data))
+                .selectAll("g")
+                .selectAll("rect")
+                .data(function(d) {
+                    return d;
+                })
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", document.body.clientWidth / 2)
+                .attr("y", document.body.clientHeight / 2)
+                .attr("width", 0)
+                .attr("height", 0)
+                .transition()
+                .duration(850)
+                .delay(function(d, i) {
+                    return i * 10;
+                })
+                .ease(d3.easeCubicInOut)
+                .attr("x", function(d) {
+                    return xScale1(d.data.Редакция);
+                })
+                .attr("y", function(d) {
+                    return yScale1(d[1]);
+                })
+                .attr("width", xScale1.bandwidth)
+                .attr("height", function(d) {
+                    return yScale1(d[0]) - yScale1(d[1]);
+                })
+        }
+
+        function second_size1() {
+            svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "bar") return true;
+                    return false;
+                })
+                .data(stack(data))
+                .selectAll("g")
+                .selectAll("rect")
+                .data(function(d) {
+                    return d;
+                })
+                .transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .attr("x", function(d) {
+                    return xScale1(d.data.Редакция);
+                })
+                .attr("y", function(d) {
+                    return yScale1(d[1]);
+                })
+                .attr("width", xScale1.bandwidth)
+                .attr("height", function(d) {
+                    return yScale1(d[0]) - yScale1(d[1]);
+                })
+        }
+
+        function third_size() {
+            var y_shift = (document.body.clientHeight - 2 * pad) / keys.length;
+            var yScaleLoc = d3.scaleLinear()
+                            .domain([0, 50])
+                            .range([0, y_shift - 10]);
+
+            var groups = svg.selectAll("g").filter(function(d) {
+                    if (d3.select(this).attr("id") == "bar") return true;
+                    return false;
+                })
+                .data(stack(data))
+                .selectAll("g");
+
+            groups.selectAll("rect")
+                .data(function(d) {
+                    return d;
+                })
+                .transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .attr("x", function(d) {
+                    return xScale1(d.data.Редакция);
+                })
+                .attr("y", function(d, i) {
+                    var num = d3.select(this.parentNode).attr("number");
+                    return document.body.clientHeight - pad - y_shift * num - yScaleLoc(d.data[keys[num]]);
+                })
+                .attr("height", function(d) {
+                    var num = d3.select(this.parentNode).attr("number");
+                    return yScaleLoc(d.data[keys[num]]);
+                })
+                .attr("width", xScale1.bandwidth);
+
+            groups.each(function(d, i) {
+                    var yLoc = d3.scaleLinear()
+                        .domain([0, 50])
+                        .range([document.body.clientHeight - pad - y_shift * i, document.body.clientHeight - pad - y_shift * (i + 1) + 20]);
+
+                    var yLocAxis = svg.append("g")
+                        .attr("category", d3.select(this).attr("category"))
+                        .style("opacity", "0")
+                        .attr("id", "detailed_axis")
+                        .attr("transform", "translate(" + left_pad + "," + 0 + ")")
+                        .call(d3.axisLeft(yLoc).tickSize(-document.body.clientWidth + left_pad + right_pad - 15).tickArguments([5, "s"]));
+
+                    yLocAxis.selectAll("text")
+                        .style("font-family", "Arial")
+                        .style("font-size", "24px")
+                        .style("font-weight", "600");
+
+                    yLocAxis.selectAll("line")
+                        .style("stroke-width", "0.2px")
+
+                    yLocAxis.append("line")
+                        .attr("x1", 0)
+                        .attr("x2", document.body.clientWidth - left_pad - right_pad + 15)
+                        .attr("y1", document.body.clientHeight - pad - y_shift * i)
+                        .attr("y2", document.body.clientHeight - pad - y_shift * i)
+                        .style("stroke-width", "1")
+                        .style("stroke", "black");
+
+                    yLocAxis.transition()
+                        .duration(850)
+                        .ease(d3.easeCubicInOut)
+                        .style("opacity", "1");
+                });
+        }
+
+        function remove_detailed() {
+            var axes = svg.selectAll("g")
+                .filter(function(d) {
+                    if (d3.select(this).attr("id") == "detailed_axis") return true;
+                    return false;
+                })
+                .transition()
+                .duration(850)
+                .ease(d3.easeCubicInOut)
+                .style("opacity", "0");
+
+            axes.remove();
+        }
+    }
+
+
+</script>
